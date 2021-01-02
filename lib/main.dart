@@ -45,7 +45,7 @@ class _MyHomePageState extends State<MyHomePage> {
   String githubClientSecret = DotEnv().env['GITHUB_CLIENT_SECRET'];
   String gitlabClientId = DotEnv().env['GITLAB_CLIENT_ID'];
   String gitlabClientSecret = DotEnv().env['GITLAB_CLIENT_SECRET'];
-  String codeVerifier = Uuid().v4();
+  String codeVerifier = Uuid().v4() + Uuid().v4();
 
   Future<void> authenticate() async {
     try {
@@ -84,33 +84,32 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<void> authenticateToGitlab() async {
-    var codeVerifierUtf8Encoded = utf8.encode(codeVerifier);
-    var codeVerifierDigest = sha256.convert(codeVerifierUtf8Encoded);
-    var codeChallenge =
-        Uri.encodeComponent(base64Encode(codeVerifierDigest.bytes));
+    var codeChallenge = base64Url
+        .encode(sha256.convert(utf8.encode(codeVerifier)).bytes)
+        .replaceAll("=", "")
+        .replaceAll("+", "-")
+        .replaceAll("/", "_");
+    ;
     try {
       OAuth2Client client = OAuth2Client(
         authorizeUrl: 'https://gitlab.com/oauth/authorize',
-        tokenUrl: 'https://gitlab.com/oauth/token',
+        tokenUrl: '',
         redirectUri: 'dev.lucaswilliameufrasio.flutteroauth://oauth2redirect',
         customUriScheme: 'dev.lucaswilliameufrasio.flutteroauth',
       );
-      client.accessTokenRequestHeaders = {'Accept': 'application/json'};
       print(client.redirectUri);
 
-      await client.getTokenWithAuthCodeFlow(
+      var accessToken = await client.getTokenWithAuthCodeFlow(
         clientId: gitlabClientId,
         authCodeParams: {
           "code_challenge": codeChallenge,
           "code_challenge_method": "S256",
         },
-        accessTokenParams: {
-          "code_verifier": codeVerifier,
-        },
         scopes: ['read_user'],
         afterAuthorizationCodeCb: getGitlabAccessToken,
       );
-
+      print(accessToken);
+      // print(codeChallenge);
     } catch (error) {
       print("Error: $error");
     }
@@ -119,20 +118,21 @@ class _MyHomePageState extends State<MyHomePage> {
   Future<void> getGitlabAccessToken(
       AuthorizationResponse authorizationResponse) async {
     print(authorizationResponse.code);
+    // print(codeVerifier);
 
     // This need to be responsibility of backend
     // send the code (authorizationResponse.code) to the backend
-    // var params = {
-    //   "client_id": gitlabClientId,
-    //   "client_secret": gitlabClientSecret,
-    //   "code": authorizationResponse.code,
-    //   "grant_type": "authorization_code",
-    //   "redirect_uri": "dev.lucaswilliameufrasio.flutteroauth://oauth2redirect",
-    //   "code_verifier": codeVerifier,
-    // };
-    // var uri = Uri.https('gitlab.com', '/oauth/token', params);
-    // var accessToken = await http.post(uri);
-    // print(accessToken.body);
+    var params = {
+      "client_id": gitlabClientId,
+      "client_secret": gitlabClientSecret,
+      "code": authorizationResponse.code,
+      "grant_type": "authorization_code",
+      "redirect_uri": "dev.lucaswilliameufrasio.flutteroauth://oauth2redirect",
+      "code_verifier": codeVerifier
+    };
+    var uri = Uri.https('gitlab.com', '/oauth/token', params);
+    var accessToken = await http.post(uri);
+    print(accessToken.body);
   }
 
   @override
